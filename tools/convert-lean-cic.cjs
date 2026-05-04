@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { normalizeCicExport } = require('../lib/cic-normalizer');
+const { normalizeCicExport } = require('../lib/cic-normalizer.cjs');
 const {
   buildError,
   parseCliArgs,

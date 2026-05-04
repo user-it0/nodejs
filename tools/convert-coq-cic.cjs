@@ -2,7 +2,7 @@
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const { normalizeCicExport } = require('../lib/cic-normalizer');
+const { normalizeCicExport } = require('../lib/cic-normalizer.cjs');
 const {
   buildError,
   parseCliArgs,
