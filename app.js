@@ -31,6 +31,7 @@ const EXECUTION_SERVER_COQ_CHECK_ROUTE = String(process.env.EXECUTION_SERVER_COQ
 const EXECUTION_BASE_URL_HEADER = 'x-ivucx-execution-base-url';
 const HELPER_PUBLIC_BASE_URL = String(process.env.HELPER_PUBLIC_BASE_URL || '').trim().replace(/\/+$/, '');
 const GITHUB_ACTIONS_CALLBACK_ROUTE = '/api/helper/github-actions/callback';
+const GITHUB_ACTIONS_PLAN_EXECUTION_ROUTE_PATTERN = /^\/api\/helper\/plans\/[^/]+\/execution$/;
 const GITHUB_EXECUTION_SYNC_WAIT_TIMEOUT_MS = Number(process.env.GITHUB_EXECUTION_SYNC_WAIT_TIMEOUT_MS || 45000);
 const GITHUB_EXECUTION_SYNC_WAIT_POLL_MS = Number(process.env.GITHUB_EXECUTION_SYNC_WAIT_POLL_MS || 1500);
 const HELPER_ALLOWED_ORIGINS = String(
@@ -164,6 +165,16 @@ app.get('/healthz', (_req, res) => {
 
 app.use((req, res, next) => {
   res.setHeader('Cache-Control', 'no-store');
+  const executionToken = String(req.headers['x-ivucx-execution-token'] || '').trim();
+  const isGitHubExecutionBridgeRoute = (
+    (req.method === 'POST' && req.path === GITHUB_ACTIONS_CALLBACK_ROUTE)
+    || (req.method === 'GET' && GITHUB_ACTIONS_PLAN_EXECUTION_ROUTE_PATTERN.test(req.path))
+  );
+  if (isGitHubExecutionBridgeRoute && executionToken) {
+    req.ivucxAuthMode = 'execution-token';
+    next();
+    return;
+  }
   if (!HELPER_API_KEY) {
     next();
     return;
@@ -180,6 +191,7 @@ app.use((req, res, next) => {
     res.status(403).json({ ok: false, error: 'Invalid helper authorization.' });
     return;
   }
+  req.ivucxAuthMode = 'helper-api-key';
   next();
 });
 
@@ -204,7 +216,7 @@ app.get('/api/helper/info', (_req, res) => {
     capabilities: {
       proofCheck: true,
       convert: true,
-      submit: true,
+      submit: !!supabase.client,
       cicConvert: true,
       planState: true,
       schemaCheck: true,
@@ -221,6 +233,7 @@ app.get('/api/helper/info', (_req, res) => {
       'POST /api/helper/check',
       'POST /api/helper/submit',
       'POST /api/helper/convert',
+      'GET /api/helper/plans/:id/execution',
       'POST /api/helper/github-actions/callback',
       'GET /api/helper/jobs',
       'GET /api/helper/jobs/:id',
@@ -333,9 +346,25 @@ app.post('/api/helper/convert', async (req, res) => {
   await handlePlannedRequest(req, res, 'convert');
 });
 
+app.get('/api/helper/plans/:id/execution', async (req, res) => {
+  try {
+    const plan = await requirePlan(req.params.id);
+    assertGitHubExecutionBridgeAccess(plan, req);
+    res.status(200).json({
+      ok: true,
+      plan: toGitHubExecutionPlanPayload(plan)
+    });
+  } catch (err) {
+    res.status(err && err.statusCode ? err.statusCode : 400).json({
+      ok: false,
+      error: err && err.message ? err.message : String(err)
+    });
+  }
+});
+
 app.post(GITHUB_ACTIONS_CALLBACK_ROUTE, async (req, res) => {
   try {
-    await handleGitHubActionsCallback(req.body || {});
+    await handleGitHubActionsCallback(req.body || {}, req);
     res.status(200).json({ ok: true });
   } catch (err) {
     res.status(err && err.statusCode ? err.statusCode : 400).json({
@@ -956,6 +985,64 @@ function createProgress(percent, stage, message) {
   };
 }
 
+function safeSecretEquals(left, right) {
+  const leftBuffer = Buffer.from(String(left || ''));
+  const rightBuffer = Buffer.from(String(right || ''));
+  return leftBuffer.length === rightBuffer.length && leftBuffer.length > 0 && timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function getGitHubExecutionAccessToken(plan) {
+  return String(plan?.requestMeta?.githubActions?.executionToken || '').trim();
+}
+
+function toGitHubExecutionPlanPayload(plan) {
+  return {
+    id: plan.id,
+    helperJobId: plan.helperJobId || null,
+    operation: plan.operation || 'convert',
+    title: plan.title || '',
+    language: plan.language || 'Lean',
+    fileName: plan.fileName || defaultFileName(plan.language || 'Lean'),
+    requestedFormat: plan.requestedFormat || 'typed-lambda-v1',
+    verify: plan.verify !== false,
+    sourceCode: plan.sourceCode || '',
+    sourceSha256: plan.sourceSha256 || sha256(plan.sourceCode || '')
+  };
+}
+
+function assertGitHubExecutionBridgeAccess(plan, req) {
+  const authMode = String(req?.ivucxAuthMode || '').trim();
+  if (authMode === 'helper-api-key') {
+    return;
+  }
+
+  const expectedToken = getGitHubExecutionAccessToken(plan);
+  const receivedToken = String(req?.headers?.['x-ivucx-execution-token'] || '').trim();
+  if (authMode === 'execution-token' && safeSecretEquals(receivedToken, expectedToken)) {
+    return;
+  }
+
+  const error = new Error('Invalid GitHub Actions execution token.');
+  error.statusCode = 403;
+  throw error;
+}
+
+async function revokeGitHubExecutionAccessToken(plan) {
+  const currentToken = getGitHubExecutionAccessToken(plan);
+  if (!currentToken) {
+    return;
+  }
+  plan.requestMeta = {
+    ...(plan.requestMeta || {}),
+    githubActions: {
+      ...((plan.requestMeta && plan.requestMeta.githubActions) || {}),
+      executionToken: null,
+      consumedAt: nowIso()
+    }
+  };
+  await persistPlan(plan);
+}
+
 function publicJob(job) {
   return {
     id: job.id,
@@ -1191,11 +1278,7 @@ async function createJobForExistingPlan(plan, req, operation = 'convert') {
 }
 
 async function createConversionPlan(payload, operation, helperJobId, req) {
-  const { client, error } = getSupabaseAdmin();
-  if (!client) {
-    throw new Error(error || 'Supabase is not configured on the helper server.');
-  }
-
+  const { client } = getSupabaseAdmin();
   const sourceBytes = Buffer.byteLength(payload.code, 'utf8');
   const sourceSha256 = sha256(payload.code);
   const closure = analyzeProofState(payload.language, payload.code);
@@ -1203,6 +1286,7 @@ async function createConversionPlan(payload, operation, helperJobId, req) {
   const executionInfo = getExecutionInfo(req);
   const executionBackend = getExecutionBackendType(executionInfo);
   const requestedFormat = defaultRequestedFormat(operation, payload);
+  const githubExecutionToken = randomUUID();
 
   const plan = {
     id: randomUUID(),
@@ -1221,7 +1305,7 @@ async function createConversionPlan(payload, operation, helperJobId, req) {
     problemId: null,
     plan: {
       schema: 'ivucx-conversion-plan-v1',
-      stateStore: 'supabase',
+      stateStore: client ? 'supabase' : 'memory',
       planner: 'railway',
       executor: executionBackend,
       operation,
@@ -1264,7 +1348,11 @@ async function createConversionPlan(payload, operation, helperJobId, req) {
       executionSource: executionInfo.source,
       executionBackend,
       helperBaseUrl: executionInfo.helperBaseUrl,
-      helperJobId: helperJobId || null
+      helperJobId: helperJobId || null,
+      githubActions: {
+        executionToken: githubExecutionToken,
+        issuedAt: createdAt
+      }
     },
     createdAt,
     updatedAt: createdAt,
@@ -1285,7 +1373,7 @@ async function dispatchPlannedJob(jobId) {
   if (isGitHubExecutionConfigured()) {
     const plan = await getPlan(job.planId);
     if (!plan) {
-      throw new Error('Conversion plan not found in Supabase. Run supabase/proof_helper.sql again.');
+      throw new Error('Conversion plan not found.');
     }
 
     job.status = JOB_STATUS.RUNNING;
@@ -1352,12 +1440,21 @@ async function dispatchGitHubPlannedJob(job, plan) {
     error.statusCode = 503;
     throw error;
   }
+  const helperAccessToken = getGitHubExecutionAccessToken(plan);
+  if (!helperAccessToken) {
+    const error = new Error(
+      'No GitHub Actions execution token is available for this plan.'
+    );
+    error.statusCode = 503;
+    throw error;
+  }
 
   await dispatchGitHubExecutionRun({
     helperJobId: job.id,
     planId: plan.id,
     operation: plan.operation,
     helperBaseUrl,
+    helperAccessToken,
     requestId: plan.requestMeta && plan.requestMeta.requestId ? plan.requestMeta.requestId : ''
   });
 
@@ -1379,7 +1476,7 @@ async function executeJob(jobId) {
   try {
     const plan = await getPlan(job.planId);
     if (!plan) {
-      throw new Error('Conversion plan not found in Supabase. Run supabase/proof_helper.sql again.');
+      throw new Error('Conversion plan not found.');
     }
 
     if (isGitHubExecutionConfigured()) {
@@ -1502,7 +1599,7 @@ async function executePlannedOperation(plan, job) {
   return finalResult;
 }
 
-async function handleGitHubActionsCallback(body) {
+async function handleGitHubActionsCallback(body, req) {
   const planId = String(body.planId || '').trim();
   const helperJobId = String(body.helperJobId || '').trim();
   const operation = String(body.operation || '').trim().toLowerCase();
@@ -1515,10 +1612,11 @@ async function handleGitHubActionsCallback(body) {
 
   const plan = await getPlan(planId);
   if (!plan) {
-    const error = new Error('Conversion plan not found in Supabase.');
+    const error = new Error('Conversion plan not found.');
     error.statusCode = 404;
     throw error;
   }
+  assertGitHubExecutionBridgeAccess(plan, req);
 
   const job = await getJob(helperJobId);
   if (!job) {
@@ -1529,10 +1627,12 @@ async function handleGitHubActionsCallback(body) {
 
   if (operation === 'check') {
     await finalizeGitHubCheckCallback(plan, job, body);
+    await revokeGitHubExecutionAccessToken(plan);
     return;
   }
 
   await finalizeGitHubConversionCallback(plan, job, body);
+  await revokeGitHubExecutionAccessToken(plan);
 }
 
 async function finalizeGitHubCheckCallback(plan, job, body) {
@@ -1803,7 +1903,7 @@ function forwardExecutionResponse(res, upstream) {
 async function requirePlan(planId) {
   const plan = await getPlan(planId);
   if (!plan) {
-    const error = new Error('Conversion plan not found in Supabase.');
+    const error = new Error('Conversion plan not found.');
     error.statusCode = 404;
     throw error;
   }
@@ -2123,7 +2223,7 @@ function extractExecutionError(payload, rawText, status) {
 async function saveProblemRecord(plan, result, proofState, completedFormat) {
   const { client, error } = getSupabaseAdmin();
   if (!client) {
-    throw new Error(error || 'Supabase is not configured on the helper server.');
+    throw new Error(error || 'Problem storage is not configured on the helper server.');
   }
 
   const conversion = result && result.conversion && typeof result.conversion === 'object'

@@ -19,6 +19,10 @@ on:
         description: Public base URL of the helper API
         required: true
         type: string
+      helper_access_token:
+        description: One-time token used to fetch plan data and post the callback
+        required: false
+        type: string
       request_id:
         description: Optional request id for traceability
         required: false
@@ -67,6 +71,7 @@ jobs:
           HELPER_JOB_ID: ${{ inputs.helper_job_id }}
           OPERATION: ${{ inputs.operation }}
           HELPER_BASE_URL: ${{ inputs.helper_base_url }}
+          HELPER_ACCESS_TOKEN: ${{ inputs.helper_access_token }}
           REQUEST_ID: ${{ inputs.request_id }}
           HELPER_API_KEY: ${{ secrets.HELPER_API_KEY }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}

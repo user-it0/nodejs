@@ -15,6 +15,7 @@ const PLAN_ID = String(process.env.PLAN_ID || '').trim();
 const HELPER_JOB_ID = String(process.env.HELPER_JOB_ID || '').trim();
 const OPERATION = String(process.env.OPERATION || '').trim().toLowerCase();
 const HELPER_BASE_URL = String(process.env.HELPER_BASE_URL || '').trim().replace(/\/+$/, '');
+const HELPER_ACCESS_TOKEN = String(process.env.HELPER_ACCESS_TOKEN || '').trim();
 const HELPER_API_KEY = String(process.env.HELPER_API_KEY || '').trim();
 const CALLBACK_ROUTE = String(process.env.HELPER_CALLBACK_ROUTE || '/api/helper/github-actions/callback').trim();
 
@@ -159,6 +160,54 @@ function getSupabaseClient() {
   });
 }
 
+function createHelperHeaders() {
+  if (HELPER_ACCESS_TOKEN) {
+    return {
+      Accept: 'application/json',
+      'X-Ivucx-Execution-Token': HELPER_ACCESS_TOKEN
+    };
+  }
+
+  const headers = {
+    Accept: 'application/json'
+  };
+
+  if (HELPER_API_KEY) {
+    headers.Authorization = `Bearer ${HELPER_API_KEY}`;
+    headers['X-Helper-Key'] = HELPER_API_KEY;
+  }
+
+  return headers;
+}
+
+async function loadPlanFromHelper(planId) {
+  const helperBaseUrl = requireEnv('HELPER_BASE_URL', HELPER_BASE_URL);
+  const url = `${helperBaseUrl}/api/helper/plans/${encodeURIComponent(planId)}/execution`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: createHelperHeaders()
+  });
+
+  const text = await response.text();
+  const parsed = tryParseJson(text);
+
+  if (!response.ok) {
+    throw new Error(
+      (parsed && (parsed.error || parsed.message))
+      || text
+      || `Helper plan fetch failed with ${response.status}`
+    );
+  }
+
+  const plan = parsed && parsed.plan && typeof parsed.plan === 'object'
+    ? parsed.plan
+    : null;
+  if (!plan) {
+    throw new Error('Helper plan fetch did not return a plan payload.');
+  }
+  return plan;
+}
+
 async function loadPlan(client, planId) {
   const { data, error } = await client
     .from('helper_conversion_plans')
@@ -185,6 +234,15 @@ async function loadPlan(client, planId) {
     sourceCode: data.source_code || '',
     sourceSha256: data.source_sha256 || sha256(data.source_code || '')
   };
+}
+
+async function loadPlanForExecution(planId) {
+  if (HELPER_BASE_URL && (HELPER_ACCESS_TOKEN || HELPER_API_KEY)) {
+    return loadPlanFromHelper(planId);
+  }
+
+  const client = getSupabaseClient();
+  return loadPlan(client, planId);
 }
 
 async function runProcess(command, args, options = {}) {
@@ -469,9 +527,8 @@ async function postCallback(body) {
   const response = await fetch(url, {
     method: 'POST',
     headers: {
-      Accept: 'application/json',
       'Content-Type': 'application/json',
-      ...(HELPER_API_KEY ? { Authorization: `Bearer ${HELPER_API_KEY}`, 'X-Helper-Key': HELPER_API_KEY } : {})
+      ...createHelperHeaders()
     },
     body: JSON.stringify(body)
   });
@@ -487,8 +544,7 @@ async function main() {
   requireEnv('HELPER_JOB_ID', HELPER_JOB_ID);
   requireEnv('OPERATION', OPERATION);
 
-  const client = getSupabaseClient();
-  const plan = await loadPlan(client, PLAN_ID);
+  const plan = await loadPlanForExecution(PLAN_ID);
   const workflow = getWorkflowMeta();
 
   if (plan.operation === 'check') {
