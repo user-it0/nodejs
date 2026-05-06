@@ -2,7 +2,7 @@
 set -euo pipefail
 
 APP_DIR="/opt/ivucx-helper"
-REPO_URL="${IVUCX_HELPER_REPO_URL:-https://github.com/ExpressPath/nodejs.git}"
+REPO_URL="${IVUCX_HELPER_REPO_URL:-https://github.com/user-it0/nodejs.git}"
 REPO_REF="${IVUCX_HELPER_REPO_REF:-main}"
 COMPOSE_FILE="$APP_DIR/deploy/gce/compose.yaml"
 RUNTIME_ENV_FILE="$APP_DIR/deploy/gce/.env.runtime"
@@ -17,7 +17,7 @@ metadata() {
 }
 
 REPO_URL="$(metadata ivucx-helper-repo-url || true)"
-REPO_URL="${REPO_URL:-${IVUCX_HELPER_REPO_URL:-https://github.com/ExpressPath/nodejs.git}}"
+REPO_URL="${REPO_URL:-${IVUCX_HELPER_REPO_URL:-https://github.com/user-it0/nodejs.git}}"
 
 REPO_REF="$(metadata ivucx-helper-repo-ref || true)"
 REPO_REF="${REPO_REF:-${IVUCX_HELPER_REPO_REF:-main}}"

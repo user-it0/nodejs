@@ -2,7 +2,7 @@
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-$HOME/nodejs}"
-START_CMD="cd \"$APP_DIR\" && \"$APP_DIR/deploy/gce/start-node.sh\""
+START_CMD="cd \"$APP_DIR\" && \"$APP_DIR/deploy/gce/sync-node.sh\""
 CRON_LINE="@reboot $START_CMD # ivucx-helper autostart"
 
 TMP_FILE="$(mktemp)"

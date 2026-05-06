@@ -14,7 +14,7 @@ param(
   [string]$ImageFamily = "ubuntu-2204-lts",
   [string]$NetworkTag = "ivucx-helper",
   [string]$StaticIp = "",
-  [string]$RepoUrl = "https://github.com/ExpressPath/nodejs.git",
+  [string]$RepoUrl = "https://github.com/user-it0/nodejs.git",
   [string]$RepoRef = "main",
   [string]$StartupScriptPath = "deploy/gce/startup-script.sh",
   [string]$RuntimeEnvPath = "deploy/gce/.env.runtime"

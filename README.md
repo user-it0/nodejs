@@ -161,6 +161,8 @@ Added deployment assets:
 - `deploy/gce/compose.yaml`
 - `deploy/gce/runtime.env.example`
 - `deploy/gce/startup-script.sh`
+- `deploy/gce/sync-node.sh`
+- `deploy/gce/enable-cron-sync.sh`
 - `deploy/gce/create-instance.sh`
 - `deploy/gce/create-firewall-rule.sh`
 - `deploy/gce/README.md`
@@ -177,6 +179,12 @@ Recommended Vercel pairing:
 - `HELPER_API_BASE_URL=http://<gce-ip-or-domain>`
 - `HELPER_API_KEY=<same as helper>`
 - leave `EXECUTION_API_BASE_URL` unset so Vercel reuses the helper's compatibility routes
+
+Recommended GCE automation:
+
+- set `GCE_SYNC_REPO_URL=https://github.com/user-it0/nodejs.git`
+- set `GCE_SYNC_REPO_REF=main`
+- run `./deploy/gce/enable-cron-sync.sh` on the VM to auto-apply future pushes
 
 ## Notes
 

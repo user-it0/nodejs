@@ -14,6 +14,8 @@ This folder prepares the helper service to run on a small always-on Compute Engi
   - installs Node.js 20 in user space without sudo
 - `start-node.sh`
   - starts the helper directly with Node.js in user space
+- `sync-node.sh`
+  - fast-forwards the VM checkout to the configured GitHub remote, runs `npm install` if needed, and restarts the helper
 - `stop-node.sh`
   - stops the user-space helper process
 - `status-node.sh`
@@ -30,6 +32,8 @@ This folder prepares the helper service to run on a small always-on Compute Engi
   - example `gcloud` wrapper for opening inbound HTTP
 - `create-firewall-rule.ps1`
   - PowerShell variant for opening inbound HTTP on Windows
+- `enable-cron-sync.sh`
+  - installs a user crontab entry that runs `sync-node.sh` on a schedule
 
 ## Recommended topology
 
@@ -65,6 +69,8 @@ Copy `runtime.env.example` to `.env.runtime` or `runtime.env` and fill in:
 - `GITHUB_EXECUTION_REPOSITORY`
 - `GITHUB_EXECUTION_ENABLE_LEAN_CIC` if you want Lean `cic-v1`
 - `GITHUB_EXECUTION_ENABLE_COQ_CIC` if you want Coq `cic-v1`
+- `GCE_SYNC_REPO_URL`
+- `GCE_SYNC_REPO_REF`
 
 Do not commit the runtime env file. The repository ignores `deploy/gce/.env.runtime` and `deploy/gce/runtime.env`.
 
@@ -107,6 +113,19 @@ It prints pid, node version, `/healthz`, and config warnings for any missing run
 ```bash
 ./deploy/gce/enable-cron-autostart.sh
 ```
+
+8. Optionally enable automatic GitHub sync every 5 minutes:
+
+```bash
+./deploy/gce/enable-cron-sync.sh
+```
+
+This uses `deploy/gce/sync-node.sh`, which:
+
+- tracks `GCE_SYNC_REMOTE` / `GCE_SYNC_REPO_URL` / `GCE_SYNC_REPO_REF`
+- fast-forwards the local checkout when possible
+- runs `npm install` when dependencies changed
+- restarts the helper automatically
 
 ## Create flow
 
