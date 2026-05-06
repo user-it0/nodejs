@@ -27,6 +27,14 @@ on:
         description: Optional request id for traceability
         required: false
         type: string
+      enable_lean_cic:
+        description: Enable Lean cic-v1 exporter setup
+        required: false
+        type: string
+      enable_coq_cic:
+        description: Enable Coq cic-v1 exporter setup
+        required: false
+        type: string
 
 jobs:
   execute:
@@ -57,6 +65,31 @@ jobs:
           curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain stable
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
 
+      - name: Optionally install lean4export for Lean CIC
+        if: ${{ inputs.enable_lean_cic == 'true' || vars.GITHUB_EXECUTION_ENABLE_LEAN_CIC == 'true' }}
+        shell: bash
+        run: |
+          git clone --depth 1 https://github.com/leanprover/lean4export.git "$RUNNER_TEMP/lean4export"
+          cd "$RUNNER_TEMP/lean4export"
+          lake build
+          echo "IVUCX_LEAN_EXPORTER_BIN=$RUNNER_TEMP/lean4export/.lake/build/bin/lean4export" >> "$GITHUB_ENV"
+
+      - name: Optionally setup OCaml for MetaRocq
+        if: ${{ inputs.enable_coq_cic == 'true' || vars.GITHUB_EXECUTION_ENABLE_COQ_CIC == 'true' }}
+        uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: 4.14.0
+
+      - name: Optionally install MetaRocq for Coq CIC
+        if: ${{ inputs.enable_coq_cic == 'true' || vars.GITHUB_EXECUTION_ENABLE_COQ_CIC == 'true' }}
+        shell: bash
+        run: |
+          opam repo add coq-released https://coq.inria.fr/opam/released
+          opam update
+          opam install -y rocq-runtime rocq-metarocq-template
+          eval "$(opam env)"
+          echo "$(opam var bin)" >> "$GITHUB_PATH"
+
       - name: Show runtime versions
         shell: bash
         run: |
@@ -77,6 +110,8 @@ jobs:
           SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GITHUB_EXECUTION_ENABLE_LEAN_CIC: ${{ inputs.enable_lean_cic || vars.GITHUB_EXECUTION_ENABLE_LEAN_CIC }}
+          GITHUB_EXECUTION_ENABLE_COQ_CIC: ${{ inputs.enable_coq_cic || vars.GITHUB_EXECUTION_ENABLE_COQ_CIC }}
           LEAN_CMD: lean
           COQ_CMD: coqc
           IVUCX_COQ_CMD: coqc

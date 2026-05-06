@@ -63,6 +63,8 @@ Copy `runtime.env.example` to `.env.runtime` or `runtime.env` and fill in:
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `GITHUB_EXECUTION_TOKEN`
 - `GITHUB_EXECUTION_REPOSITORY`
+- `GITHUB_EXECUTION_ENABLE_LEAN_CIC` if you want Lean `cic-v1`
+- `GITHUB_EXECUTION_ENABLE_COQ_CIC` if you want Coq `cic-v1`
 
 Do not commit the runtime env file. The repository ignores `deploy/gce/.env.runtime` and `deploy/gce/runtime.env`.
 

@@ -201,6 +201,8 @@ app.get('/api/helper/info', (_req, res) => {
   const executionInfo = getExecutionInfo(_req);
   const executionConfigured = !!executionInfo.configured;
   const executionBackend = getExecutionBackendType(executionInfo);
+  const typedLambdaAvailability = buildConversionAvailability(_req, 'typed-lambda');
+  const cicAvailability = buildConversionAvailability(_req, 'cic');
   res.status(200).json({
     ok: true,
     service: SERVICE_NAME,
@@ -217,7 +219,7 @@ app.get('/api/helper/info', (_req, res) => {
       proofCheck: true,
       convert: true,
       submit: !!supabase.client,
-      cicConvert: true,
+      cicConvert: Boolean(cicAvailability.lean.available || cicAvailability.coq.available),
       planState: true,
       schemaCheck: true,
       executionBridge: true,
@@ -250,8 +252,8 @@ app.get('/api/helper/info', (_req, res) => {
         conversion: executionConfigured ? executionBackend : 'unconfigured'
       },
       conversionRuntimes: {
-        typedLambda: buildConversionAvailability(_req),
-        cic: buildConversionAvailability(_req)
+        typedLambda: typedLambdaAvailability,
+        cic: cicAvailability
       }
     },
     execution: executionInfo,
@@ -453,18 +455,91 @@ function getRoleInfo() {
   };
 }
 
-function buildConversionAvailability(req) {
+function hasConfiguredEnv(...names) {
+  return names.some((name) => String(process.env[name] || '').trim());
+}
+
+function isLeanCicConfigured(executionInfo) {
+  const backend = getExecutionBackendType(executionInfo);
+  if (!executionInfo.configured) {
+    return false;
+  }
+
+  if (backend === 'github-actions') {
+    return parseBoolean(
+      process.env.GITHUB_EXECUTION_ENABLE_LEAN_CIC
+      || process.env.IVUCX_ENABLE_LEAN_CIC
+      || process.env.LEAN_CIC_ENABLED,
+      hasConfiguredEnv(
+        'IVUCX_LEAN_EXPORTER_BIN',
+        'LEAN4EXPORT_BIN',
+        'IVUCX_LEAN_EXPORTER_CMD',
+        'LEAN4EXPORT_CMD'
+      )
+    );
+  }
+
+  if (backend === 'execution-server') {
+    return parseBoolean(
+      process.env.EXECUTION_SERVER_ENABLE_LEAN_CIC
+      || process.env.IVUCX_ENABLE_LEAN_CIC
+      || process.env.LEAN_CIC_ENABLED,
+      false
+    );
+  }
+
+  return false;
+}
+
+function isCoqCicConfigured(executionInfo) {
+  const backend = getExecutionBackendType(executionInfo);
+  if (!executionInfo.configured) {
+    return false;
+  }
+
+  if (backend === 'github-actions') {
+    return parseBoolean(
+      process.env.GITHUB_EXECUTION_ENABLE_COQ_CIC
+      || process.env.IVUCX_ENABLE_COQ_CIC
+      || process.env.COQ_CIC_ENABLED,
+      hasConfiguredEnv(
+        'IVUCX_COQ_CIC_EXPORT_CMD',
+        'COQ_CIC_EXPORT_CMD'
+      )
+    );
+  }
+
+  if (backend === 'execution-server') {
+    return parseBoolean(
+      process.env.EXECUTION_SERVER_ENABLE_COQ_CIC
+      || process.env.IVUCX_ENABLE_COQ_CIC
+      || process.env.COQ_CIC_ENABLED,
+      false
+    );
+  }
+
+  return false;
+}
+
+function buildConversionAvailability(req, family = 'typed-lambda') {
   const executionInfo = getExecutionInfo(req);
   const backend = getExecutionBackendType(executionInfo);
+  const typedLambdaAvailable = !!executionInfo.configured;
+  const leanAvailable = family === 'cic'
+    ? (typedLambdaAvailable && isLeanCicConfigured(executionInfo))
+    : typedLambdaAvailable;
+  const coqAvailable = family === 'cic'
+    ? (typedLambdaAvailable && isCoqCicConfigured(executionInfo))
+    : typedLambdaAvailable;
   return {
     lean: {
-      available: !!executionInfo.configured,
+      available: leanAvailable,
       planner: 'railway',
       executor: executionInfo.configured ? backend : 'unconfigured',
       stateStore: 'supabase'
     },
     coq: {
-      available: !!executionInfo.configured,
+      available: coqAvailable,
       planner: 'railway',
       executor: executionInfo.configured ? backend : 'unconfigured',
       stateStore: 'supabase'

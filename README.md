@@ -61,6 +61,8 @@ Optional:
 - `GITHUB_EXECUTION_REPOSITORY`
 - `GITHUB_EXECUTION_WORKFLOW`
 - `GITHUB_EXECUTION_REF`
+- `GITHUB_EXECUTION_ENABLE_LEAN_CIC`
+- `GITHUB_EXECUTION_ENABLE_COQ_CIC`
 - `GITHUB_EXECUTION_SYNC_WAIT_TIMEOUT_MS`
 - `GITHUB_EXECUTION_SYNC_WAIT_POLL_MS`
 - `HELPER_MAX_CODE_BYTES`
@@ -126,7 +128,10 @@ This repository can now replace the old Render execution role with GitHub Action
 ### Toolchain notes
 
 - The workflow installs `coq` and a standard Lean toolchain automatically.
-- `cic-v1` export may still require extra exporter setup depending on your Lean / Coq environment, especially for `lean4export` or a custom Coq CIC exporter.
+- Set `GITHUB_EXECUTION_ENABLE_LEAN_CIC=true` to let the workflow build `lean4export` and advertise Lean `cic-v1` support.
+- Set `GITHUB_EXECUTION_ENABLE_COQ_CIC=true` to let the workflow install MetaRocq via `opam` and advertise Coq `cic-v1` support.
+- Those flags can live on the helper server; the helper forwards them into `workflow_dispatch` inputs, so a separate GitHub repo variable is optional.
+- If those flags stay unset, the helper now reports `typed-lambda-v1` only, so the UI will not promise CIC and then silently fall back.
 
 ### Behavior notes
 
