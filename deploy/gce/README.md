@@ -16,6 +16,8 @@ This folder prepares the helper service to run on a small always-on Compute Engi
   - starts the helper directly with Node.js in user space
 - `sync-node.sh`
   - fast-forwards the VM checkout to the configured GitHub remote, runs `npm install` if needed, and restarts the helper
+- `reclone-node.sh`
+  - creates a fresh clone, preserves `.env.runtime`, installs dependencies, swaps the app directory, and restarts the helper
 - `stop-node.sh`
   - stops the user-space helper process
 - `status-node.sh`
@@ -126,6 +128,12 @@ This uses `deploy/gce/sync-node.sh`, which:
 - fast-forwards the local checkout when possible
 - runs `npm install` when dependencies changed
 - restarts the helper automatically
+
+If the VM checkout is too stale or points at the wrong remote, run a fresh clone while preserving the runtime env:
+
+```bash
+./deploy/gce/reclone-node.sh
+```
 
 ## Create flow
 

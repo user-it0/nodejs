@@ -162,6 +162,7 @@ Added deployment assets:
 - `deploy/gce/runtime.env.example`
 - `deploy/gce/startup-script.sh`
 - `deploy/gce/sync-node.sh`
+- `deploy/gce/reclone-node.sh`
 - `deploy/gce/enable-cron-sync.sh`
 - `deploy/gce/create-instance.sh`
 - `deploy/gce/create-firewall-rule.sh`
