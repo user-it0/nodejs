@@ -88,6 +88,10 @@ fi
 cd "$APP_DIR"
 ensure_remote
 
+if parse_bool "$SYNC_RESTART" && [ -x "$APP_DIR/deploy/gce/stop-node.sh" ]; then
+  "$APP_DIR/deploy/gce/stop-node.sh" || true
+fi
+
 if ! git diff --quiet || ! git diff --cached --quiet; then
   if parse_bool "$SYNC_FORCE_CLEAN"; then
     git reset --hard HEAD
