@@ -81,16 +81,32 @@ should_run_npm_install() {
   printf '%s\n' "$CHANGED_FILES" | grep -Eq '(^|/)(package\.json|package-lock\.json)$'
 }
 
+helper_running() {
+  local pid_file="$APP_DIR/.run/helper.pid"
+  local helper_port="${PORT:-3000}"
+
+  if [ -f "$pid_file" ]; then
+    local pid
+    pid="$(cat "$pid_file" 2>/dev/null || true)"
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+      return 0
+    fi
+  fi
+
+  if command -v fuser >/dev/null 2>&1; then
+    fuser -n tcp "$helper_port" >/dev/null 2>&1
+    return
+  fi
+
+  return 1
+}
+
 if [ ! -d "$APP_DIR/.git" ]; then
   git clone "$SYNC_REPO_URL" "$APP_DIR"
 fi
 
 cd "$APP_DIR"
 ensure_remote
-
-if parse_bool "$SYNC_RESTART" && [ -x "$APP_DIR/deploy/gce/stop-node.sh" ]; then
-  "$APP_DIR/deploy/gce/stop-node.sh" || true
-fi
 
 if ! git diff --quiet || ! git diff --cached --quiet; then
   if parse_bool "$SYNC_FORCE_CLEAN"; then
@@ -103,6 +119,7 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
 fi
 
 PREVIOUS_COMMIT="$(git rev-parse HEAD)"
+UPDATED="false"
 git fetch "$SYNC_REMOTE" "$SYNC_REF"
 TARGET_COMMIT="$(git rev-parse FETCH_HEAD)"
 
@@ -115,8 +132,10 @@ fi
 if [ "$PREVIOUS_COMMIT" != "$TARGET_COMMIT" ]; then
   if git merge-base --is-ancestor HEAD "$TARGET_COMMIT"; then
     git merge --ff-only "$TARGET_COMMIT"
+    UPDATED="true"
   elif parse_bool "$SYNC_FORCE_CLEAN"; then
     git reset --hard "$TARGET_COMMIT"
+    UPDATED="true"
   else
     echo "Local branch cannot fast-forward to $SYNC_REMOTE/$SYNC_REF."
     echo "Re-run with --force-clean to reset to the remote commit."
@@ -127,13 +146,19 @@ fi
 CHANGED_FILES="$(git diff --name-only "$PREVIOUS_COMMIT" "$TARGET_COMMIT" || true)"
 
 ensure_node_toolchain
+NPM_INSTALL_RAN="false"
 if should_run_npm_install; then
   "$NPM_CMD" install
+  NPM_INSTALL_RAN="true"
 fi
 
 if parse_bool "$SYNC_RESTART"; then
-  "$APP_DIR/deploy/gce/stop-node.sh" || true
-  "$APP_DIR/deploy/gce/start-node.sh"
+  if parse_bool "$UPDATED" || parse_bool "$NPM_INSTALL_RAN"; then
+    "$APP_DIR/deploy/gce/stop-node.sh" || true
+    "$APP_DIR/deploy/gce/start-node.sh"
+  elif ! helper_running; then
+    "$APP_DIR/deploy/gce/start-node.sh"
+  fi
 fi
 
 printf 'synced_to=%s branch=%s remote=%s/%s\n' "$TARGET_COMMIT" "$LOCAL_BRANCH" "$SYNC_REMOTE" "$SYNC_REF"
