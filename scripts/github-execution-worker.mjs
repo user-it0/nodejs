@@ -391,7 +391,10 @@ async function runConversion(language, code, fileName, format) {
         format: requestedFormat,
         error: structured && structured.error
           ? String(structured.error)
-          : truncateOutput(result.stderr || result.stdout || `${toLabel(normalizedLanguage)} conversion failed`)
+          : truncateOutput(result.stderr || result.stdout || `${toLabel(normalizedLanguage)} conversion failed`),
+        details: structured && structured.details && typeof structured.details === 'object'
+          ? structured.details
+          : null
       };
 
     return {
@@ -455,7 +458,8 @@ function summarizeConversionFailure(result) {
     error: extractConversionMessage(result),
     stdout: truncateOutput(conversion && conversion.stdout ? conversion.stdout : ''),
     stderr: truncateOutput(conversion && conversion.stderr ? conversion.stderr : ''),
-    lambdaError: lambda && typeof lambda.error === 'string' ? truncateOutput(lambda.error) : ''
+    lambdaError: lambda && typeof lambda.error === 'string' ? truncateOutput(lambda.error) : '',
+    lambdaDetails: lambda && lambda.details && typeof lambda.details === 'object' ? lambda.details : null
   };
 }
 
