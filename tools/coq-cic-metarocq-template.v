@@ -1,6 +1,6 @@
 From Stdlib Require Import String Ascii List.
-From MetaRocq.Template Require Import All.
-From MetaRocq.Common Require Import BasicAst Kernames Universes Environment.
+From MetaCoq.Template Require Import All.
+From MetaCoq.Common Require Import BasicAst Kernames Universes Environment.
 
 Import MonadNotation.
 Import ListNotations.
