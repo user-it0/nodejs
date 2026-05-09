@@ -5,6 +5,7 @@ From Coq Require Import String Ascii List.
 Import MCMonadNotation.
 Import ListNotations.
 Local Open Scope string_scope.
+Local Infix "^" := String.append : string_scope.
 
 Definition ivucx_quote_char : ascii := Ascii.ascii_of_nat 34.
 Definition ivucx_backslash_char : ascii := Ascii.ascii_of_nat 92.
