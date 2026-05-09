@@ -439,6 +439,26 @@ function extractConversionMessage(result) {
   return 'Conversion failed.';
 }
 
+function summarizeConversionFailure(result) {
+  const conversion = result && result.conversion && typeof result.conversion === 'object'
+    ? result.conversion
+    : null;
+  const lambda = conversion && conversion.lambda && typeof conversion.lambda === 'object'
+    ? conversion.lambda
+    : null;
+
+  return {
+    requestedFormat: conversion && conversion.requestedFormat ? conversion.requestedFormat : null,
+    targetFamily: conversion && conversion.targetFamily ? conversion.targetFamily : null,
+    exitCode: conversion && typeof conversion.exitCode === 'number' ? conversion.exitCode : null,
+    timedOut: Boolean(conversion && conversion.timedOut),
+    error: extractConversionMessage(result),
+    stdout: truncateOutput(conversion && conversion.stdout ? conversion.stdout : ''),
+    stderr: truncateOutput(conversion && conversion.stderr ? conversion.stderr : ''),
+    lambdaError: lambda && typeof lambda.error === 'string' ? truncateOutput(lambda.error) : ''
+  };
+}
+
 async function performConversion(plan, formatOverride = '') {
   const completedFormat = String(formatOverride || '').trim() || plan.requestedFormat;
   const verifyBeforeConvert = plan.verify !== false;
@@ -487,6 +507,8 @@ async function performConversion(plan, formatOverride = '') {
     };
 
   if (!result.ok && shouldRetryWithTypedLambda(plan.requestedFormat, extractConversionMessage(result))) {
+    const fallbackReason = summarizeConversionFailure(result);
+    console.warn(`CIC conversion failed; retrying typed-lambda-v1 fallback: ${fallbackReason.error}`);
     const fallback = await runConversion(plan.language, plan.sourceCode, plan.fileName, 'typed-lambda-v1');
     return {
       result: fallback.ok
@@ -510,7 +532,8 @@ async function performConversion(plan, formatOverride = '') {
           conversion: fallback
         },
       completedFormat: 'typed-lambda-v1',
-      fallbackUsed: true
+      fallbackUsed: true,
+      fallback: fallbackReason
     };
   }
 
@@ -571,6 +594,7 @@ async function main() {
     result: execution.result,
     completedFormat: execution.completedFormat,
     fallbackUsed: execution.fallbackUsed,
+    fallback: execution.fallback || null,
     workflow
   });
 }

@@ -1809,6 +1809,7 @@ async function finalizeGitHubConversionCallback(plan, job, body) {
   const completedFormat = String(body.completedFormat || '').trim() || plan.requestedFormat;
   const fallbackUsed = Boolean(body.fallbackUsed);
   const workflowMeta = body.workflow && typeof body.workflow === 'object' ? body.workflow : null;
+  const fallbackMeta = body.fallback && typeof body.fallback === 'object' ? body.fallback : null;
 
   let finalResult = body.result && typeof body.result === 'object'
     ? { ...body.result }
@@ -1855,6 +1856,7 @@ async function finalizeGitHubConversionCallback(plan, job, body) {
     requestedFormat: plan.requestedFormat,
     completedFormat,
     fallbackUsed,
+    fallback: fallbackMeta,
     workflow: workflowMeta
   };
 
