@@ -1,6 +1,6 @@
-From Coq Require Import String Ascii List.
 From MetaCoq.Template Require Import All.
 From MetaCoq.Common Require Import BasicAst Kernames Universes Environment.
+From Coq Require Import String Ascii List.
 
 Import MCMonadNotation.
 Import ListNotations.
