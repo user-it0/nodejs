@@ -72,6 +72,7 @@ jobs:
           git clone --depth 1 https://github.com/leanprover/lean4export.git "$RUNNER_TEMP/lean4export"
           cd "$RUNNER_TEMP/lean4export"
           lake build
+          echo "LEAN_TOOLCHAIN=$(cat lean-toolchain)" >> "$GITHUB_ENV"
           echo "IVUCX_LEAN_EXPORTER_BIN=$RUNNER_TEMP/lean4export/.lake/build/bin/lean4export" >> "$GITHUB_ENV"
 
       - name: Optionally setup OCaml for MetaRocq
