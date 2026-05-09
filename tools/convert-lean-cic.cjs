@@ -446,6 +446,8 @@ async function runLean4Export(sourcePath, moduleName) {
   const dir = path.dirname(sourcePath);
   const lakefileTomlPath = path.join(dir, 'lakefile.toml');
   const toolchainPath = path.join(dir, 'lean-toolchain');
+  const oleanPath = path.join(dir, `${moduleName}.olean`);
+  const leanCommand = String(process.env.IVUCX_LEAN_CMD || process.env.LEAN_CMD || 'lean').trim();
   const command = String(process.env.IVUCX_LEAN_EXPORTER_CMD || process.env.LEAN4EXPORT_CMD || 'lake').trim();
   const exportBin = String(process.env.IVUCX_LEAN_EXPORTER_BIN || process.env.LEAN4EXPORT_BIN || 'lean4export').trim();
   const rawArgs = String(process.env.IVUCX_LEAN_EXPORTER_ARGS || process.env.LEAN4EXPORT_ARGS || 'env {bin} {module}').trim();
@@ -462,6 +464,19 @@ async function runLean4Export(sourcePath, moduleName) {
     ...process.env,
     LEAN_PATH: [dir, process.env.LEAN_PATH || ''].filter(Boolean).join(path.delimiter)
   };
+
+  const compileResult = await runProcess(leanCommand, ['-o', oleanPath, sourcePath], {
+    cwd: dir,
+    env,
+    timeoutMs: Number(process.env.IVUCX_CONVERTER_TIMEOUT_MS || 180000)
+  });
+
+  if (compileResult.timedOut) {
+    throw buildError('Lean CIC module compilation timed out', compileResult);
+  }
+  if (compileResult.exitCode !== 0) {
+    throw buildError('Lean CIC module compilation failed', compileResult);
+  }
 
   const result = await runProcess(command, args, {
     cwd: dir,
