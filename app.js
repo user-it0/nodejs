@@ -1549,6 +1549,8 @@ async function dispatchGitHubPlannedJob(job, plan) {
     helperJobId: job.id,
     planId: plan.id,
     operation: plan.operation,
+    language: plan.language,
+    format: plan.requestedFormat,
     helperBaseUrl,
     helperAccessToken,
     requestId: plan.requestMeta && plan.requestMeta.requestId ? plan.requestMeta.requestId : ''

@@ -66,7 +66,7 @@ jobs:
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
 
       - name: Optionally install lean4export for Lean CIC
-        if: ${{ inputs.enable_lean_cic == 'true' || vars.GITHUB_EXECUTION_ENABLE_LEAN_CIC == 'true' }}
+        if: ${{ inputs.enable_lean_cic == 'true' }}
         shell: bash
         run: |
           git clone --depth 1 https://github.com/leanprover/lean4export.git "$RUNNER_TEMP/lean4export"
@@ -75,13 +75,13 @@ jobs:
           echo "IVUCX_LEAN_EXPORTER_BIN=$RUNNER_TEMP/lean4export/.lake/build/bin/lean4export" >> "$GITHUB_ENV"
 
       - name: Optionally setup OCaml for MetaRocq
-        if: ${{ inputs.enable_coq_cic == 'true' || vars.GITHUB_EXECUTION_ENABLE_COQ_CIC == 'true' }}
+        if: ${{ inputs.enable_coq_cic == 'true' }}
         uses: ocaml/setup-ocaml@v3
         with:
           ocaml-compiler: 4.14.0
 
       - name: Optionally install MetaRocq for Coq CIC
-        if: ${{ inputs.enable_coq_cic == 'true' || vars.GITHUB_EXECUTION_ENABLE_COQ_CIC == 'true' }}
+        if: ${{ inputs.enable_coq_cic == 'true' }}
         shell: bash
         run: |
           opam repo add coq-released https://coq.inria.fr/opam/released
@@ -110,8 +110,8 @@ jobs:
           SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          GITHUB_EXECUTION_ENABLE_LEAN_CIC: ${{ inputs.enable_lean_cic || vars.GITHUB_EXECUTION_ENABLE_LEAN_CIC }}
-          GITHUB_EXECUTION_ENABLE_COQ_CIC: ${{ inputs.enable_coq_cic || vars.GITHUB_EXECUTION_ENABLE_COQ_CIC }}
+          GITHUB_EXECUTION_ENABLE_LEAN_CIC: ${{ inputs.enable_lean_cic }}
+          GITHUB_EXECUTION_ENABLE_COQ_CIC: ${{ inputs.enable_coq_cic }}
           LEAN_CMD: lean
           COQ_CMD: coqc
           IVUCX_COQ_CMD: coqc
