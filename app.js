@@ -455,6 +455,27 @@ function getRoleInfo() {
   };
 }
 
+function parseBoolean(value, fallbackValue) {
+  if (value === undefined || value === null || value === '') {
+    return fallbackValue;
+  }
+
+  switch (String(value).trim().toLowerCase()) {
+    case '1':
+    case 'true':
+    case 'yes':
+    case 'on':
+      return true;
+    case '0':
+    case 'false':
+    case 'no':
+    case 'off':
+      return false;
+    default:
+      return fallbackValue;
+  }
+}
+
 function hasConfiguredEnv(...names) {
   return names.some((name) => String(process.env[name] || '').trim());
 }
