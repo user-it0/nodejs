@@ -87,14 +87,12 @@ jobs:
         with:
           ocaml-compiler: 4.14.0
           dune-cache: true
-          opam-repositories: |
-            default: https://github.com/ocaml/opam-repository.git
-            coq-released: https://coq.inria.fr/opam/released
 
       - name: Optionally install MetaRocq for Coq CIC
         if: ${{ (inputs.language == '' || inputs.language == 'coq') && inputs.enable_coq_cic == 'true' }}
         shell: bash
         run: |
+          opam repo list --short | grep -qx coq-released || opam repo add coq-released https://coq.inria.fr/opam/released
           opam update
           opam install -y rocq-runtime rocq-metarocq-template
           eval "$(opam env)"
