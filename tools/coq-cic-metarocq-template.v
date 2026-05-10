@@ -5,7 +5,7 @@ From Coq Require Import String Ascii List.
 Import MCMonadNotation.
 Import ListNotations.
 Local Open Scope string_scope.
-Local Infix "^" := String.append : string_scope.
+Local Infix "+s" := append (at level 72).
 
 Definition ivucx_quote_char : ascii := Ascii.ascii_of_nat 34.
 Definition ivucx_backslash_char : ascii := Ascii.ascii_of_nat 92.
@@ -25,18 +25,18 @@ Fixpoint ivucx_escape_json_string (value : string) : string :=
   | EmptyString => EmptyString
   | String ch rest =>
       let escaped :=
-        if Ascii.eqb ch ivucx_quote_char then ivucx_backslash_string ^ ivucx_quote_string
-        else if Ascii.eqb ch ivucx_backslash_char then ivucx_backslash_string ^ ivucx_backslash_string
-        else if Ascii.eqb ch ivucx_newline_char then ivucx_backslash_string ^ "n"
-        else if Ascii.eqb ch ivucx_return_char then ivucx_backslash_string ^ "r"
-        else if Ascii.eqb ch ivucx_tab_char then ivucx_backslash_string ^ "t"
+        if Ascii.eqb ch ivucx_quote_char then ivucx_backslash_string +s ivucx_quote_string
+        else if Ascii.eqb ch ivucx_backslash_char then ivucx_backslash_string +s ivucx_backslash_string
+        else if Ascii.eqb ch ivucx_newline_char then ivucx_backslash_string +s "n"
+        else if Ascii.eqb ch ivucx_return_char then ivucx_backslash_string +s "r"
+        else if Ascii.eqb ch ivucx_tab_char then ivucx_backslash_string +s "t"
         else ivucx_char_string ch
       in
-      escaped ^ ivucx_escape_json_string rest
+      escaped +s ivucx_escape_json_string rest
   end.
 
 Definition ivucx_json_string (value : string) : string :=
-  ivucx_quote_string ^ ivucx_escape_json_string value ^ ivucx_quote_string.
+  ivucx_quote_string +s ivucx_escape_json_string value +s ivucx_quote_string.
 
 Definition ivucx_json_bool (value : bool) : string :=
   if value then "true" else "false".
@@ -45,17 +45,17 @@ Fixpoint ivucx_join_with_comma (items : list string) : string :=
   match items with
   | [] => EmptyString
   | [item] => item
-  | item :: rest => item ^ "," ^ ivucx_join_with_comma rest
+  | item :: rest => item +s "," +s ivucx_join_with_comma rest
   end.
 
 Definition ivucx_json_array (items : list string) : string :=
-  "[" ^ ivucx_join_with_comma items ^ "]".
+  "[" +s ivucx_join_with_comma items +s "]".
 
 Definition ivucx_json_field (key value : string) : string :=
-  ivucx_json_string key ^ ":" ^ value.
+  ivucx_json_string key +s ":" +s value.
 
 Definition ivucx_json_object (fields : list string) : string :=
-  "{" ^ ivucx_join_with_comma fields ^ "}".
+  "{" +s ivucx_join_with_comma fields +s "}".
 
 Definition ivucx_json_raw_level (value : string) : string :=
   ivucx_json_object [
@@ -121,7 +121,7 @@ with ivucx_json_def_items (items : list (def term)) : string :=
       ivucx_json_object [
         ivucx_json_field "kind" (ivucx_json_string "evar");
         ivucx_json_field "index" (string_of_nat ev);
-        ivucx_json_field "args" ("[" ^ ivucx_json_term_items args ^ "]")
+        ivucx_json_field "args" ("[" +s ivucx_json_term_items args +s "]")
       ]
   | tSort s =>
       ivucx_json_sort s
@@ -164,7 +164,7 @@ with ivucx_json_def_items (items : list (def term)) : string :=
       ivucx_json_object [
         ivucx_json_field "kind" (ivucx_json_string "app");
         ivucx_json_field "fn" (ivucx_json_term f);
-        ivucx_json_field "args" ("[" ^ ivucx_json_term_items args ^ "]")
+        ivucx_json_field "args" ("[" +s ivucx_json_term_items args +s "]")
       ]
   | tConst c u =>
       ivucx_json_object [
@@ -198,13 +198,13 @@ with ivucx_json_def_items (items : list (def term)) : string :=
         ivucx_json_field "predicate" (
           ivucx_json_object [
             ivucx_json_field "universes" (ivucx_json_instance (puinst type_info));
-            ivucx_json_field "params" ("[" ^ ivucx_json_term_items (pparams type_info) ^ "]");
+            ivucx_json_field "params" ("[" +s ivucx_json_term_items (pparams type_info) +s "]");
             ivucx_json_field "context" (ivucx_json_aname_array (pcontext type_info));
             ivucx_json_field "returnType" (ivucx_json_term (preturn type_info))
           ]
         );
         ivucx_json_field "discriminant" (ivucx_json_term discr);
-        ivucx_json_field "branches" ("[" ^ ivucx_json_branch_items branches ^ "]")
+        ivucx_json_field "branches" ("[" +s ivucx_json_branch_items branches +s "]")
       ]
   | tProj proj tm =>
       ivucx_json_object [
@@ -218,13 +218,13 @@ with ivucx_json_def_items (items : list (def term)) : string :=
       ivucx_json_object [
         ivucx_json_field "kind" (ivucx_json_string "fix");
         ivucx_json_field "index" (string_of_nat idx);
-        ivucx_json_field "definitions" ("[" ^ ivucx_json_def_items defs ^ "]")
+        ivucx_json_field "definitions" ("[" +s ivucx_json_def_items defs +s "]")
       ]
   | tCoFix defs idx =>
       ivucx_json_object [
         ivucx_json_field "kind" (ivucx_json_string "cofix");
         ivucx_json_field "index" (string_of_nat idx);
-        ivucx_json_field "definitions" ("[" ^ ivucx_json_def_items defs ^ "]")
+        ivucx_json_field "definitions" ("[" +s ivucx_json_def_items defs +s "]")
       ]
   | tInt _ =>
       ivucx_json_object [
@@ -248,7 +248,7 @@ with ivucx_json_def_items (items : list (def term)) : string :=
       ivucx_json_object [
         ivucx_json_field "kind" (ivucx_json_string "array");
         ivucx_json_field "universe" (ivucx_json_raw_level (string_of_level u));
-        ivucx_json_field "elements" ("[" ^ ivucx_json_term_items items ^ "]");
+        ivucx_json_field "elements" ("[" +s ivucx_json_term_items items +s "]");
         ivucx_json_field "default" (ivucx_json_term default_value);
         ivucx_json_field "type" (ivucx_json_term item_type)
       ]
@@ -257,7 +257,7 @@ with ivucx_json_term_items (items : list term) : string :=
   match items with
   | [] => EmptyString
   | [item] => ivucx_json_term item
-  | item :: rest => ivucx_json_term item ^ "," ^ ivucx_json_term_items rest
+  | item :: rest => ivucx_json_term item +s "," +s ivucx_json_term_items rest
   end
 with ivucx_json_branch (b : branch term) : string :=
   ivucx_json_object [
@@ -268,7 +268,7 @@ with ivucx_json_branch_items (items : list (branch term)) : string :=
   match items with
   | [] => EmptyString
   | [item] => ivucx_json_branch item
-  | item :: rest => ivucx_json_branch item ^ "," ^ ivucx_json_branch_items rest
+  | item :: rest => ivucx_json_branch item +s "," +s ivucx_json_branch_items rest
   end
 with ivucx_json_def (d : def term) : string :=
   ivucx_json_object [
@@ -282,7 +282,7 @@ with ivucx_json_def_items (items : list (def term)) : string :=
   match items with
   | [] => EmptyString
   | [item] => ivucx_json_def item
-  | item :: rest => ivucx_json_def item ^ "," ^ ivucx_json_def_items rest
+  | item :: rest => ivucx_json_def item +s "," +s ivucx_json_def_items rest
   end.
 
 Definition ivucx_json_constant_body (qualid_name : qualid) (body : constant_body) : string :=
@@ -329,7 +329,7 @@ Definition ivucx_export_constant (name : qualid) : TemplateMonad unit :=
       body <- tmQuoteConstant kn true ;;
       tmMsg (ivucx_json_constant_body name body)
   | _ =>
-      tmFail ("[" ^ name ^ "] is not a constant")
+      tmFail ("[" +s name +s "] is not a constant")
   end.
 
 Redirect "__IVUCX_OUTPUT_PATH__" MetaRocq Run (ivucx_export_constant "__IVUCX_TARGET_QUALID__").
