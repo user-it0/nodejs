@@ -114,6 +114,67 @@ jobs:
             lean --version || true
           fi
 
+      - name: Report toolchain setup failure
+        if: ${{ failure() }}
+        continue-on-error: true
+        env:
+          PLAN_ID: ${{ inputs.plan_id }}
+          HELPER_JOB_ID: ${{ inputs.helper_job_id }}
+          OPERATION: ${{ inputs.operation }}
+          HELPER_BASE_URL: ${{ inputs.helper_base_url }}
+          HELPER_API_KEY: ${{ secrets.HELPER_API_KEY }}
+          HELPER_CALLBACK_ROUTE: /api/helper/github-actions/callback
+        shell: bash
+        run: |
+          node <<'NODE'
+          const baseUrl = String(process.env.HELPER_BASE_URL || '').replace(/\/+$/, '');
+          const route = String(process.env.HELPER_CALLBACK_ROUTE || '/api/helper/github-actions/callback');
+          const helperKey = String(process.env.HELPER_API_KEY || '');
+
+          if (!baseUrl) {
+            console.error('HELPER_BASE_URL is missing; cannot report setup failure.');
+            process.exit(0);
+          }
+
+          const body = {
+            planId: process.env.PLAN_ID || null,
+            helperJobId: process.env.HELPER_JOB_ID || null,
+            operation: process.env.OPERATION || null,
+            error: {
+              message: 'GitHub Actions toolchain setup failed before the execution worker started.'
+            },
+            workflow: {
+              runId: process.env.GITHUB_RUN_ID || null,
+              runAttempt: process.env.GITHUB_RUN_ATTEMPT || null,
+              repository: process.env.GITHUB_REPOSITORY || null,
+              sha: process.env.GITHUB_SHA || null,
+              workflow: process.env.GITHUB_WORKFLOW || null
+            }
+          };
+
+          const headers = {
+            Accept: 'application/json',
+            'Content-Type': 'application/json'
+          };
+          if (helperKey) {
+            headers.Authorization = `Bearer ${helperKey}`;
+            headers['X-Helper-Key'] = helperKey;
+          }
+
+          (async () => {
+            const response = await fetch(`${baseUrl}${route}`, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify(body)
+            });
+            if (!response.ok) {
+              console.error(await response.text());
+            }
+          })().catch((error) => {
+            console.error(error && error.message ? error.message : error);
+          });
+          NODE
+
       - name: Execute helper plan
         env:
           PLAN_ID: ${{ inputs.plan_id }}
