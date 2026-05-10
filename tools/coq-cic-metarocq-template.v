@@ -208,12 +208,6 @@ Fixpoint ivucx_json_term (t : term) : string :=
         ivucx_json_field "literal" (ivucx_json_string "float");
         ivucx_json_field "value" ivucx_json_null
       ]
-  | tString _ =>
-      ivucx_json_object [
-        ivucx_json_field "kind" (ivucx_json_string "lit");
-        ivucx_json_field "literal" (ivucx_json_string "string");
-        ivucx_json_field "value" ivucx_json_null
-      ]
   | tArray u items default_value item_type =>
       ivucx_json_object [
         ivucx_json_field "kind" (ivucx_json_string "array");
