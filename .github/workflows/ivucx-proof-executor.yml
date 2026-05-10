@@ -89,15 +89,25 @@ jobs:
 
       - name: Optionally install MetaCoq for Coq CIC
         if: ${{ (inputs.language == '' || inputs.language == 'coq') && inputs.enable_coq_cic == 'true' }}
-        timeout-minutes: 20
+        timeout-minutes: 45
         shell: bash
         run: |
+          keepalive() {
+            while true; do
+              echo "MetaCoq setup is still running..."
+              sleep 60
+            done
+          }
+          keepalive &
+          KEEPALIVE_PID=$!
+          trap 'kill "$KEEPALIVE_PID" 2>/dev/null || true' EXIT
+
           rm -rf "$RUNNER_TEMP/rocq-opam"
           git clone --depth 1 https://github.com/rocq-prover/opam.git "$RUNNER_TEMP/rocq-opam"
           opam repo remove rocq-released || true
           opam repo add rocq-released "$RUNNER_TEMP/rocq-opam/released"
           opam update
-          opam install -y coq-metacoq-template.1.3.1+8.18
+          opam install -y --verbose coq-metacoq-template.1.3.1+8.18
           eval "$(opam env)"
           echo "$(opam var bin)" >> "$GITHUB_PATH"
 
