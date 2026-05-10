@@ -218,7 +218,7 @@ app.get('/api/helper/info', (_req, res) => {
     capabilities: {
       proofCheck: true,
       convert: true,
-      submit: !!supabase.client,
+      submit: !!supabase.client || ENABLE_MEMORY_SCHEMA_FALLBACK,
       cicConvert: Boolean(cicAvailability.lean.available || cicAvailability.coq.available),
       planState: true,
       schemaCheck: true,
@@ -1681,6 +1681,12 @@ async function executePlannedOperation(plan, job) {
     const saved = await saveProblemRecord(currentPlan, finalResult, proofState, completedFormat);
     problemId = saved.id || null;
     finalResult.problemId = problemId;
+    if (saved.memoryFallback) {
+      finalResult.storage = {
+        persisted: false,
+        reason: saved.warning || 'Problem storage is not configured on the helper server.'
+      };
+    }
   }
 
   await persistExecutionOutcome(currentPlan.id, {
@@ -1887,6 +1893,12 @@ async function finalizeGitHubConversionCallback(plan, job, body) {
     const saved = await saveProblemRecord(plan, finalResult, proofState, completedFormat);
     problemId = saved.id || null;
     finalResult.problemId = problemId;
+    if (saved.memoryFallback) {
+      finalResult.storage = {
+        persisted: false,
+        reason: saved.warning || 'Problem storage is not configured on the helper server.'
+      };
+    }
   }
 
   await persistExecutionOutcome(plan.id, {
@@ -2323,6 +2335,14 @@ function extractExecutionError(payload, rawText, status) {
 async function saveProblemRecord(plan, result, proofState, completedFormat) {
   const { client, error } = getSupabaseAdmin();
   if (!client) {
+    if (ENABLE_MEMORY_SCHEMA_FALLBACK) {
+      return {
+        id: null,
+        created_at: nowIso(),
+        memoryFallback: true,
+        warning: error || 'Problem storage is not configured on the helper server.'
+      };
+    }
     throw new Error(error || 'Problem storage is not configured on the helper server.');
   }
 
