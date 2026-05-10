@@ -223,30 +223,39 @@ with ivucx_json_term_items (items : list term) : string :=
   | [item] => ivucx_json_term item
   | item :: rest => ivucx_json_term item +s "," +s ivucx_json_term_items rest
   end
-with ivucx_json_branch (b : branch term) : string :=
-  ivucx_json_object [
-    ivucx_json_field "names" (ivucx_json_aname_array (bcontext b));
-    ivucx_json_field "body" (ivucx_json_term (bbody b))
-  ]
 with ivucx_json_branch_items (items : list (branch term)) : string :=
   match items with
   | [] => ""
-  | [item] => ivucx_json_branch item
-  | item :: rest => ivucx_json_branch item +s "," +s ivucx_json_branch_items rest
+  | [item] =>
+      ivucx_json_object [
+        ivucx_json_field "names" (ivucx_json_aname_array (bcontext item));
+        ivucx_json_field "body" (ivucx_json_term (bbody item))
+      ]
+  | item :: rest =>
+      ivucx_json_object [
+        ivucx_json_field "names" (ivucx_json_aname_array (bcontext item));
+        ivucx_json_field "body" (ivucx_json_term (bbody item))
+      ] +s "," +s ivucx_json_branch_items rest
   end
-with ivucx_json_def (d : def term) : string :=
-  ivucx_json_object [
-    ivucx_json_field "name" (ivucx_json_name (binder_name (dname d)));
-    ivucx_json_field "relevance" (ivucx_json_string (string_of_relevance (binder_relevance (dname d))));
-    ivucx_json_field "type" (ivucx_json_term (dtype d));
-    ivucx_json_field "body" (ivucx_json_term (dbody d));
-    ivucx_json_field "recursiveArg" (string_of_nat (rarg d))
-  ]
 with ivucx_json_def_items (items : list (def term)) : string :=
   match items with
   | [] => ""
-  | [item] => ivucx_json_def item
-  | item :: rest => ivucx_json_def item +s "," +s ivucx_json_def_items rest
+  | [item] =>
+      ivucx_json_object [
+        ivucx_json_field "name" (ivucx_json_name (binder_name (dname item)));
+        ivucx_json_field "relevance" (ivucx_json_string (string_of_relevance (binder_relevance (dname item))));
+        ivucx_json_field "type" (ivucx_json_term (dtype item));
+        ivucx_json_field "body" (ivucx_json_term (dbody item));
+        ivucx_json_field "recursiveArg" (string_of_nat (rarg item))
+      ]
+  | item :: rest =>
+      ivucx_json_object [
+        ivucx_json_field "name" (ivucx_json_name (binder_name (dname item)));
+        ivucx_json_field "relevance" (ivucx_json_string (string_of_relevance (binder_relevance (dname item))));
+        ivucx_json_field "type" (ivucx_json_term (dtype item));
+        ivucx_json_field "body" (ivucx_json_term (dbody item));
+        ivucx_json_field "recursiveArg" (string_of_nat (rarg item))
+      ] +s "," +s ivucx_json_def_items rest
   end.
 
 Definition ivucx_json_constant_body (qualid_name : qualid) (body : constant_body) : string :=
