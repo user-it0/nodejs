@@ -67,6 +67,7 @@ Copy `runtime.env.example` to `.env.runtime` or `runtime.env` and fill in:
 - `HELPER_ALLOWED_ORIGINS`
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
+- `HELPER_MEMORY_SCHEMA_FALLBACK=true` allows conversion/submit responses without persistent Supabase storage.
 - `GITHUB_EXECUTION_TOKEN`
 - `GITHUB_EXECUTION_REPOSITORY`
 - `GITHUB_EXECUTION_ENABLE_LEAN_CIC` if you want Lean `cic-v1`
