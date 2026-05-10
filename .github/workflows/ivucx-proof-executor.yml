@@ -15,6 +15,10 @@ on:
         description: check / convert / submit
         required: true
         type: string
+      language:
+        description: lean / coq
+        required: false
+        type: string
       helper_base_url:
         description: Public base URL of the helper API
         required: true
@@ -39,7 +43,7 @@ on:
 jobs:
   execute:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 75
     permissions:
       contents: read
     steps:
@@ -55,18 +59,20 @@ jobs:
         run: npm install
 
       - name: Install Coq toolchain
+        if: ${{ (inputs.language == '' || inputs.language == 'coq') && inputs.enable_coq_cic != 'true' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y coq
 
       - name: Install Lean toolchain
+        if: ${{ inputs.language == '' || inputs.language == 'lean' }}
         shell: bash
         run: |
           curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain stable
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
 
       - name: Optionally install lean4export for Lean CIC
-        if: ${{ inputs.enable_lean_cic == 'true' }}
+        if: ${{ (inputs.language == '' || inputs.language == 'lean') && inputs.enable_lean_cic == 'true' }}
         shell: bash
         run: |
           git clone --depth 1 https://github.com/leanprover/lean4export.git "$RUNNER_TEMP/lean4export"
@@ -76,16 +82,19 @@ jobs:
           echo "IVUCX_LEAN_EXPORTER_BIN=$RUNNER_TEMP/lean4export/.lake/build/bin/lean4export" >> "$GITHUB_ENV"
 
       - name: Optionally setup OCaml for MetaRocq
-        if: ${{ inputs.enable_coq_cic == 'true' }}
+        if: ${{ (inputs.language == '' || inputs.language == 'coq') && inputs.enable_coq_cic == 'true' }}
         uses: ocaml/setup-ocaml@v3
         with:
           ocaml-compiler: 4.14.0
+          dune-cache: true
+          opam-repositories: |
+            default: https://github.com/ocaml/opam-repository.git
+            coq-released: https://coq.inria.fr/opam/released
 
       - name: Optionally install MetaRocq for Coq CIC
-        if: ${{ inputs.enable_coq_cic == 'true' }}
+        if: ${{ (inputs.language == '' || inputs.language == 'coq') && inputs.enable_coq_cic == 'true' }}
         shell: bash
         run: |
-          opam repo add coq-released https://coq.inria.fr/opam/released
           opam update
           opam install -y rocq-runtime rocq-metarocq-template
           eval "$(opam env)"
@@ -94,9 +103,16 @@ jobs:
       - name: Show runtime versions
         shell: bash
         run: |
+          if [ "${{ inputs.enable_coq_cic }}" = "true" ]; then
+            eval "$(opam env)"
+          fi
           node --version
-          coqc --version
-          lean --version || true
+          if [ "${{ inputs.language }}" != "lean" ]; then
+            coqc --version || true
+          fi
+          if [ "${{ inputs.language }}" != "coq" ]; then
+            lean --version || true
+          fi
 
       - name: Execute helper plan
         env:
@@ -116,4 +132,9 @@ jobs:
           LEAN_CMD: lean
           COQ_CMD: coqc
           IVUCX_COQ_CMD: coqc
-        run: node scripts/github-execution-worker.mjs
+        shell: bash
+        run: |
+          if [ "${{ inputs.enable_coq_cic }}" = "true" ]; then
+            eval "$(opam env)"
+          fi
+          node scripts/github-execution-worker.mjs
