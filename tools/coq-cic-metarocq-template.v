@@ -1,42 +1,15 @@
-From MetaCoq.Template Require Import All.
-From MetaCoq.Common Require Import BasicAst Kernames Universes Environment.
-From Coq Require Import String Ascii List.
+From MetaRocq.Utils Require Import utils.
+From MetaRocq.Template Require Import All.
+From MetaRocq.Common Require Import BasicAst Kernames Universes Environment.
+From Stdlib Require Import List.
 
-Import MCMonadNotation.
 Import ListNotations.
-Local Open Scope string_scope.
-Local Infix "+s" := append (at level 72).
-
-Definition ivucx_quote_char : ascii := Ascii.ascii_of_nat 34.
-Definition ivucx_backslash_char : ascii := Ascii.ascii_of_nat 92.
-Definition ivucx_newline_char : ascii := Ascii.ascii_of_nat 10.
-Definition ivucx_return_char : ascii := Ascii.ascii_of_nat 13.
-Definition ivucx_tab_char : ascii := Ascii.ascii_of_nat 9.
-
-Definition ivucx_char_string (ch : ascii) : string := String ch EmptyString.
-
-Definition ivucx_quote_string : string := ivucx_char_string ivucx_quote_char.
-Definition ivucx_backslash_string : string := ivucx_char_string ivucx_backslash_char.
+Local Open Scope bs_scope.
 
 Definition ivucx_json_null : string := "null".
 
-Fixpoint ivucx_escape_json_string (value : string) : string :=
-  match value with
-  | EmptyString => EmptyString
-  | String ch rest =>
-      let escaped :=
-        if Ascii.eqb ch ivucx_quote_char then ivucx_backslash_string +s ivucx_quote_string
-        else if Ascii.eqb ch ivucx_backslash_char then ivucx_backslash_string +s ivucx_backslash_string
-        else if Ascii.eqb ch ivucx_newline_char then ivucx_backslash_string +s "n"
-        else if Ascii.eqb ch ivucx_return_char then ivucx_backslash_string +s "r"
-        else if Ascii.eqb ch ivucx_tab_char then ivucx_backslash_string +s "t"
-        else ivucx_char_string ch
-      in
-      escaped +s ivucx_escape_json_string rest
-  end.
-
 Definition ivucx_json_string (value : string) : string :=
-  ivucx_quote_string +s ivucx_escape_json_string value +s ivucx_quote_string.
+  """" +s value +s """".
 
 Definition ivucx_json_bool (value : bool) : string :=
   if value then "true" else "false".
@@ -323,13 +296,13 @@ Definition ivucx_json_constant_body (qualid_name : qualid) (body : constant_body
   ].
 
 Definition ivucx_export_constant (name : qualid) : TemplateMonad unit :=
-  gr <- tmLocate1 name ;;
-  match gr with
-  | ConstRef kn =>
-      body <- tmQuoteConstant kn true ;;
-      tmMsg (ivucx_json_constant_body name body)
-  | _ =>
-      tmFail ("[" +s name +s "] is not a constant")
-  end.
+  tmBind (tmLocate1 name) (fun gr =>
+    match gr with
+    | ConstRef kn =>
+        tmBind (tmQuoteConstant kn true) (fun body =>
+          tmMsg (ivucx_json_constant_body name body))
+    | _ =>
+        tmFail ("[" +s name +s "] is not a constant")
+    end).
 
 Redirect "__IVUCX_OUTPUT_PATH__" MetaRocq Run (ivucx_export_constant "__IVUCX_TARGET_QUALID__").

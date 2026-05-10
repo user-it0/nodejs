@@ -87,7 +87,7 @@ jobs:
         run: |
           opam repo add coq-released https://coq.inria.fr/opam/released
           opam update
-          opam install -y coq-metacoq-template.1.3.1+8.18
+          opam install -y rocq-runtime rocq-metarocq-template
           eval "$(opam env)"
           echo "$(opam var bin)" >> "$GITHUB_PATH"
 
