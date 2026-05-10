@@ -1,10 +1,12 @@
-From MetaRocq.Utils Require Import utils.
-From MetaRocq.Template Require Import All.
-From MetaRocq.Common Require Import BasicAst Kernames Universes Environment.
-From Stdlib Require Import List.
+From MetaCoq.Utils Require Import utils bytestring.
+From MetaCoq.Template Require Import All.
+From MetaCoq.Common Require Import BasicAst Kernames Universes Environment.
+From Coq Require Import List.
 
+Import bytestring.
 Import ListNotations.
 Local Open Scope bs_scope.
+Local Infix "+s" := bytestring.String.append (at level 72).
 
 Definition ivucx_json_null : string := "null".
 
@@ -16,7 +18,7 @@ Definition ivucx_json_bool (value : bool) : string :=
 
 Fixpoint ivucx_join_with_comma (items : list string) : string :=
   match items with
-  | [] => EmptyString
+  | [] => ""
   | [item] => item
   | item :: rest => item +s "," +s ivucx_join_with_comma rest
   end.
@@ -228,7 +230,7 @@ with ivucx_json_def_items (items : list (def term)) : string :=
   end
 with ivucx_json_term_items (items : list term) : string :=
   match items with
-  | [] => EmptyString
+  | [] => ""
   | [item] => ivucx_json_term item
   | item :: rest => ivucx_json_term item +s "," +s ivucx_json_term_items rest
   end
@@ -239,7 +241,7 @@ with ivucx_json_branch (b : branch term) : string :=
   ]
 with ivucx_json_branch_items (items : list (branch term)) : string :=
   match items with
-  | [] => EmptyString
+  | [] => ""
   | [item] => ivucx_json_branch item
   | item :: rest => ivucx_json_branch item +s "," +s ivucx_json_branch_items rest
   end
@@ -253,7 +255,7 @@ with ivucx_json_def (d : def term) : string :=
   ]
 with ivucx_json_def_items (items : list (def term)) : string :=
   match items with
-  | [] => EmptyString
+  | [] => ""
   | [item] => ivucx_json_def item
   | item :: rest => ivucx_json_def item +s "," +s ivucx_json_def_items rest
   end.
@@ -305,4 +307,4 @@ Definition ivucx_export_constant (name : qualid) : TemplateMonad unit :=
         tmFail ("[" +s name +s "] is not a constant")
     end).
 
-Redirect "__IVUCX_OUTPUT_PATH__" MetaRocq Run (ivucx_export_constant "__IVUCX_TARGET_QUALID__").
+Redirect "__IVUCX_OUTPUT_PATH__" MetaCoq Run (ivucx_export_constant "__IVUCX_TARGET_QUALID__").
