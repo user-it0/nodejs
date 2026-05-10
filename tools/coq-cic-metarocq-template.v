@@ -75,12 +75,7 @@ Definition ivucx_json_projection (proj : projection) : string :=
     ivucx_json_field "arg" (string_of_nat (proj_arg proj))
   ].
 
-Fixpoint ivucx_json_term (t : term) : string
-with ivucx_json_term_items (items : list term) : string
-with ivucx_json_branch (b : branch term) : string
-with ivucx_json_branch_items (items : list (branch term)) : string
-with ivucx_json_def (d : def term) : string
-with ivucx_json_def_items (items : list (def term)) : string :=
+Fixpoint ivucx_json_term (t : term) : string :=
   match t with
   | tRel n =>
       ivucx_json_object [
