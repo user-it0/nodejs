@@ -1,7 +1,7 @@
 import express from 'express';
 import { createHash, randomUUID, timingSafeEqual } from 'crypto';
-import { readFile } from 'fs/promises';
-import { dirname, isAbsolute, resolve as resolvePath } from 'path';
+import { mkdir, readFile, writeFile } from 'fs/promises';
+import { dirname, isAbsolute, join, resolve as resolvePath } from 'path';
 import { createClient } from '@supabase/supabase-js';
 import pg from 'pg';
 import { fileURLToPath } from 'url';
@@ -34,6 +34,12 @@ const GITHUB_ACTIONS_CALLBACK_ROUTE = '/api/helper/github-actions/callback';
 const GITHUB_ACTIONS_PLAN_EXECUTION_ROUTE_PATTERN = /^\/api\/helper\/plans\/[^/]+\/execution$/;
 const GITHUB_EXECUTION_SYNC_WAIT_TIMEOUT_MS = Number(process.env.GITHUB_EXECUTION_SYNC_WAIT_TIMEOUT_MS || 45000);
 const GITHUB_EXECUTION_SYNC_WAIT_POLL_MS = Number(process.env.GITHUB_EXECUTION_SYNC_WAIT_POLL_MS || 1500);
+const HELPER_DISK_STATE_FALLBACK = !['0', 'false', 'no', 'off'].includes(
+  String(process.env.HELPER_DISK_STATE_FALLBACK || 'true').trim().toLowerCase()
+);
+const HELPER_STATE_DIR = resolvePath(
+  String(process.env.HELPER_STATE_DIR || join(MODULE_DIR, '.run', 'state')).trim()
+);
 const HELPER_ALLOWED_ORIGINS = String(
   process.env.HELPER_ALLOWED_ORIGINS
   || 'https://provf.onrender.com,http://localhost:3000,http://127.0.0.1:3000'
@@ -111,6 +117,37 @@ let supabaseSchemaBootstrapState = {
   lastAppliedAt: '',
   lastError: ''
 };
+
+function stateFileName(id) {
+  return `${String(id || '').replace(/[^A-Za-z0-9_.-]/g, '_')}.json`;
+}
+
+function stateFilePath(kind, id) {
+  return join(HELPER_STATE_DIR, kind, stateFileName(id));
+}
+
+async function writeDiskState(kind, id, value) {
+  if (!HELPER_DISK_STATE_FALLBACK || !id) return;
+  const dir = join(HELPER_STATE_DIR, kind);
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  await writeFile(stateFilePath(kind, id), JSON.stringify(value, null, 2), {
+    encoding: 'utf8',
+    mode: 0o600
+  });
+}
+
+async function readDiskState(kind, id) {
+  if (!HELPER_DISK_STATE_FALLBACK || !id) return null;
+  try {
+    const raw = await readFile(stateFilePath(kind, id), 'utf8');
+    return JSON.parse(raw);
+  } catch (error) {
+    if (error && error.code === 'ENOENT') {
+      return null;
+    }
+    return null;
+  }
+}
 
 app.disable('x-powered-by');
 app.use(express.json({ limit: '1mb' }));
@@ -224,6 +261,7 @@ app.get('/api/helper/info', (_req, res) => {
       schemaCheck: true,
       executionBridge: true,
       memorySchemaFallback: ENABLE_MEMORY_SCHEMA_FALLBACK,
+      diskStateFallback: HELPER_DISK_STATE_FALLBACK,
       asyncJobs: true
     },
     routes: [
@@ -246,7 +284,7 @@ app.get('/api/helper/info', (_req, res) => {
       executionModel: {
         stateStore: supabase.client
           ? (ENABLE_MEMORY_SCHEMA_FALLBACK ? 'supabase-with-memory-fallback' : 'supabase')
-          : 'memory',
+          : (HELPER_DISK_STATE_FALLBACK ? 'disk-memory' : 'memory'),
         planning: 'railway',
         proofCheck: executionConfigured ? executionBackend : 'unconfigured',
         conversion: executionConfigured ? executionBackend : 'unconfigured'
@@ -2621,13 +2659,25 @@ function listMemoryAndPlanJobs() {
 
 async function loadPersistedJob(id) {
   const { client } = getSupabaseAdmin();
-  if (!client) return null;
+  if (!client) {
+    const diskJob = await readDiskState('jobs', id);
+    if (diskJob && diskJob.id) {
+      jobs.set(diskJob.id, diskJob);
+      return diskJob;
+    }
+    return null;
+  }
   const { data, error } = await client
     .from('helper_jobs')
     .select('*')
     .eq('id', id)
     .maybeSingle();
   if (error && shouldFallbackForMissingTable(error, 'helper_jobs')) {
+    const diskJob = await readDiskState('jobs', id);
+    if (diskJob && diskJob.id) {
+      jobs.set(diskJob.id, diskJob);
+      return diskJob;
+    }
     return jobs.get(id) || null;
   }
   if (error && isMissingSupabaseRelationError(error, 'helper_jobs')) {
@@ -2740,6 +2790,7 @@ async function persistJob(job) {
   const { client } = getSupabaseAdmin();
   if (!client) {
     jobs.set(job.id, { ...job });
+    await writeDiskState('jobs', job.id, { ...job });
     return;
   }
   const { error } = await client.from('helper_jobs').upsert({
@@ -2766,6 +2817,7 @@ async function persistJob(job) {
   if (error) {
     if (shouldFallbackForMissingTable(error, 'helper_jobs')) {
       jobs.set(job.id, { ...job });
+      await writeDiskState('jobs', job.id, { ...job });
       return;
     }
     if (isMissingSupabaseRelationError(error, 'helper_jobs')) {
@@ -2786,13 +2838,25 @@ async function getPlan(id) {
 
 async function loadPersistedPlan(id) {
   const { client } = getSupabaseAdmin();
-  if (!client) return null;
+  if (!client) {
+    const diskPlan = await readDiskState('plans', id);
+    if (diskPlan && diskPlan.id) {
+      plans.set(diskPlan.id, diskPlan);
+      return diskPlan;
+    }
+    return null;
+  }
   const { data, error } = await client
     .from('helper_conversion_plans')
     .select('*')
     .eq('id', id)
     .maybeSingle();
   if (error && shouldFallbackForMissingTable(error, 'helper_conversion_plans')) {
+    const diskPlan = await readDiskState('plans', id);
+    if (diskPlan && diskPlan.id) {
+      plans.set(diskPlan.id, diskPlan);
+      return diskPlan;
+    }
     return plans.get(id) || null;
   }
   if (error && isMissingSupabaseRelationError(error, 'helper_conversion_plans')) {
@@ -2838,7 +2902,7 @@ async function persistPlan(plan) {
       ...plan,
       plan: {
         ...(plan.plan || {}),
-        stateStore: 'memory'
+        stateStore: HELPER_DISK_STATE_FALLBACK ? 'disk-memory' : 'memory'
       },
       requestMeta: {
         ...(plan.requestMeta || {}),
@@ -2847,6 +2911,7 @@ async function persistPlan(plan) {
     };
     Object.assign(plan, memoryPlan);
     plans.set(plan.id, memoryPlan);
+    await writeDiskState('plans', plan.id, memoryPlan);
     return;
   }
   const { error } = await client.from('helper_conversion_plans').upsert({
@@ -2881,7 +2946,7 @@ async function persistPlan(plan) {
         ...plan,
         plan: {
           ...(plan.plan || {}),
-          stateStore: 'memory'
+          stateStore: HELPER_DISK_STATE_FALLBACK ? 'disk-memory' : 'memory'
         },
         requestMeta: {
           ...(plan.requestMeta || {}),
@@ -2890,6 +2955,7 @@ async function persistPlan(plan) {
       };
       Object.assign(plan, memoryPlan);
       plans.set(plan.id, memoryPlan);
+      await writeDiskState('plans', plan.id, memoryPlan);
       return;
     }
     if (isMissingSupabaseRelationError(error, 'helper_conversion_plans')) {
