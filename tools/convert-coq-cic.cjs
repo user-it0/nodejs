@@ -304,7 +304,9 @@ async function runMetaRocqExporter(sourceText, sourcePath, outPath) {
       throw buildError('Built-in MetaRocq Coq CIC exporter failed', result);
     }
 
-    const rawJson = (await readTextIfExists(redirectPath)).trim() || String(result.stdout || '').trim();
+    const rawJson = (await readTextIfExists(redirectPath)).trim()
+      || (await readTextIfExists(`${redirectPath}.out`)).trim()
+      || String(result.stdout || '').trim();
     if (!rawJson) {
       throw buildError('Built-in MetaRocq Coq CIC exporter did not emit JSON', result);
     }
