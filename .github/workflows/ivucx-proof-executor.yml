@@ -86,7 +86,6 @@ jobs:
         uses: ocaml/setup-ocaml@v3
         with:
           ocaml-compiler: 4.14.0
-          dune-cache: true
 
       - name: Optionally install MetaRocq for Coq CIC
         if: ${{ (inputs.language == '' || inputs.language == 'coq') && inputs.enable_coq_cic == 'true' }}
