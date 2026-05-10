@@ -1,7 +1,9 @@
 import express from 'express';
+import { spawn } from 'child_process';
 import { createHash, randomUUID, timingSafeEqual } from 'crypto';
-import { mkdir, readFile, writeFile } from 'fs/promises';
-import { dirname, isAbsolute, join, resolve as resolvePath } from 'path';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises';
+import { tmpdir } from 'os';
+import { basename, dirname, isAbsolute, join, resolve as resolvePath } from 'path';
 import { createClient } from '@supabase/supabase-js';
 import pg from 'pg';
 import { fileURLToPath } from 'url';
@@ -34,6 +36,17 @@ const GITHUB_ACTIONS_CALLBACK_ROUTE = '/api/helper/github-actions/callback';
 const GITHUB_ACTIONS_PLAN_EXECUTION_ROUTE_PATTERN = /^\/api\/helper\/plans\/[^/]+\/execution$/;
 const GITHUB_EXECUTION_SYNC_WAIT_TIMEOUT_MS = Number(process.env.GITHUB_EXECUTION_SYNC_WAIT_TIMEOUT_MS || 45000);
 const GITHUB_EXECUTION_SYNC_WAIT_POLL_MS = Number(process.env.GITHUB_EXECUTION_SYNC_WAIT_POLL_MS || 1500);
+const HELPER_LOCAL_PROOF_CHECK_ENABLED = parseBoolean(
+  process.env.HELPER_LOCAL_PROOF_CHECK_ENABLED || process.env.LOCAL_PROOF_CHECK_ENABLED,
+  true
+);
+const HELPER_LOCAL_PROOF_CHECK_LANGUAGES = String(
+  process.env.HELPER_LOCAL_PROOF_CHECK_LANGUAGES || 'coq'
+)
+  .split(',')
+  .map((language) => language.trim().toLowerCase())
+  .filter(Boolean);
+const LOCAL_PROOF_CHECK_TIMEOUT_MS = Number(process.env.LOCAL_PROOF_CHECK_TIMEOUT_MS || 20000);
 const HELPER_DISK_STATE_FALLBACK = !['0', 'false', 'no', 'off'].includes(
   String(process.env.HELPER_DISK_STATE_FALLBACK || 'true').trim().toLowerCase()
 );
@@ -331,6 +344,15 @@ app.post('/api/helper/check', async (req, res) => {
   try {
     const payload = normalizeProofPayload(req.body || {});
     const wantsAsync = req.body && req.body.async !== false;
+    const localVerification = await tryLocalProofCheck(payload);
+
+    if (localVerification) {
+      res.status(statusCodeForVerification(localVerification)).json({
+        ok: Boolean(localVerification.ok),
+        verification: localVerification
+      });
+      return;
+    }
 
     if (isGitHubExecutionConfigured()) {
       if (wantsAsync) {
@@ -1064,6 +1086,155 @@ function truncateOutput(text, limit = 12000) {
   return value.slice(0, limit) + `\n...[output truncated ${value.length - limit} chars]`;
 }
 
+function splitCommandArgs(rawValue) {
+  return String(rawValue || '')
+    .split(/\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function shouldUseLocalProofCheck(language) {
+  if (!HELPER_LOCAL_PROOF_CHECK_ENABLED) {
+    return false;
+  }
+  const normalized = String(language || '').trim().toLowerCase();
+  return HELPER_LOCAL_PROOF_CHECK_LANGUAGES.includes(normalized);
+}
+
+function getLocalProofRuntime(language) {
+  const normalized = String(language || '').trim().toLowerCase();
+  if (normalized === 'coq') {
+    return {
+      command: String(process.env.COQ_CMD || 'coqc').trim(),
+      args: splitCommandArgs(process.env.COQ_ARGS || ''),
+      extension: '.v',
+      defaultFileName: 'Main.v'
+    };
+  }
+
+  return {
+    command: String(process.env.LEAN_CMD || 'lean').trim(),
+    args: splitCommandArgs(process.env.LEAN_ARGS || ''),
+    extension: '.lean',
+    defaultFileName: 'Main.lean'
+  };
+}
+
+function sanitizeProofFileName(fileName, fallbackFileName, extension) {
+  const rawName = basename(String(fileName || fallbackFileName || 'Main').trim() || fallbackFileName);
+  if (rawName.toLowerCase().endsWith(extension)) {
+    return rawName;
+  }
+  const withoutExtension = rawName.replace(/\.[^.]*$/, '') || 'Main';
+  return `${withoutExtension}${extension}`;
+}
+
+function commandMissing(error) {
+  const message = String(error && error.message ? error.message : error || '').toLowerCase();
+  return error && error.code === 'ENOENT' || message.includes('enoent') || message.includes('not found');
+}
+
+async function runLocalProofCheck(payload) {
+  const runtime = getLocalProofRuntime(payload.language);
+  if (!runtime.command) {
+    const error = new Error('Local proof command is not configured.');
+    error.statusCode = 503;
+    throw error;
+  }
+
+  const normalizedCode = typeof payload.code === 'string' ? payload.code : '';
+  const tempDir = await mkdtemp(join(tmpdir(), `ivucx-proof-${payload.language.toLowerCase()}-`));
+  const fileName = sanitizeProofFileName(payload.fileName, runtime.defaultFileName, runtime.extension);
+  const filePath = join(tempDir, fileName);
+  const startedAt = Date.now();
+
+  await writeFile(filePath, normalizedCode, 'utf8');
+
+  try {
+    const execution = await new Promise((resolve, reject) => {
+      const child = spawn(runtime.command, [...runtime.args, filePath], {
+        cwd: tempDir,
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+
+      let stdout = '';
+      let stderr = '';
+      let timedOut = false;
+      let settled = false;
+      const timeout = setTimeout(() => {
+        timedOut = true;
+        child.kill();
+      }, LOCAL_PROOF_CHECK_TIMEOUT_MS);
+
+      child.stdout.on('data', (chunk) => {
+        stdout += chunk.toString();
+      });
+
+      child.stderr.on('data', (chunk) => {
+        stderr += chunk.toString();
+      });
+
+      child.on('error', (error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        reject(error);
+      });
+
+      child.on('close', (exitCode, signal) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        resolve({
+          ok: exitCode === 0 && !timedOut,
+          exitCode,
+          signal,
+          timedOut,
+          stdout,
+          stderr,
+          durationMs: Date.now() - startedAt
+        });
+      });
+    });
+
+    return {
+      ok: execution.ok,
+      language: payload.language.toLowerCase(),
+      fileName,
+      command: runtime.command,
+      args: runtime.args.concat([fileName]),
+      exitCode: typeof execution.exitCode === 'number' ? execution.exitCode : null,
+      signal: execution.signal || null,
+      timedOut: Boolean(execution.timedOut),
+      durationMs: execution.durationMs,
+      codeBytes: Buffer.byteLength(normalizedCode, 'utf8'),
+      stdout: truncateOutput(execution.stdout),
+      stderr: truncateOutput(execution.stderr),
+      error: execution.ok ? '' : truncateOutput(execution.stderr || execution.stdout || 'Local proof check failed.'),
+      upstreamStatus: execution.timedOut ? 504 : (execution.ok ? 200 : 422),
+      source: 'gce-local-proof-check',
+      proofState: normalizeProofState(analyzeProofState(payload.language, payload.code).proofState) || 'NN'
+    };
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+}
+
+async function tryLocalProofCheck(payload) {
+  if (!shouldUseLocalProofCheck(payload.language)) {
+    return null;
+  }
+
+  try {
+    return await runLocalProofCheck(payload);
+  } catch (error) {
+    if (commandMissing(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 function tryParseJson(text) {
   if (typeof text !== 'string') return null;
   const trimmed = text.trim();
@@ -1261,6 +1432,13 @@ async function handleCompatibilityProofCheck(req, res, language) {
       ...(req.body || {}),
       language
     });
+    const localVerification = await tryLocalProofCheck(payload);
+
+    if (localVerification) {
+      const legacy = toLegacyProofCheckBody(localVerification);
+      res.status(statusCodeForVerification(localVerification)).json(legacy);
+      return;
+    }
 
     if (isGitHubExecutionConfigured()) {
       const job = await createPlannedJob(payload, 'check', req);
