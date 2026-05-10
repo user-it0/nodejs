@@ -299,7 +299,7 @@ Definition ivucx_json_constant_body (qualid_name : qualid) (body : constant_body
         ));
         ivucx_json_field "universes" (
           match universes_entry_of_decl (cst_universes body) with
-          | Monomorphic_entry => ivucx_json_string "monomorphic"
+          | Monomorphic_entry _ => ivucx_json_string "monomorphic"
           | Polymorphic_entry _ => ivucx_json_string "polymorphic"
           end
         )
